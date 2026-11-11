@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Blocks commits that would leak secrets or household data into this public repo.
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+
+fail() { echo "pre-commit: $*" >&2; exit 1; }
+
+# 1. Author email must be the GitHub no-reply address.
+email="$(git config user.email || true)"
+[[ "$email" == *@users.noreply.github.com ]] \
+  || fail "user.email is not a GitHub no-reply address; set it with: git config user.email <id>+<user>@users.noreply.github.com"
+
+# 2. Secrets in staged changes.
+command -v gitleaks >/dev/null || fail "gitleaks is not installed (brew install gitleaks)"
+gitleaks git --pre-commit --staged --redact --no-banner --log-level warn \
+  || fail "gitleaks found a possible secret in the staged changes"
+
+# 3. Household-specific strings from the git-ignored denylist.
+denylist=".private-denylist"
+if [[ ! -f "$denylist" ]]; then
+  echo "pre-commit: warning: $denylist not found; skipping the household data check" >&2
+  exit 0
+fi
+
+patterns="$(mktemp)"
+trap 'rm -f "$patterns"' EXIT
+grep -vE '^[[:space:]]*(#|$)' "$denylist" > "$patterns" || true
+[[ -s "$patterns" ]] || exit 0
+
+# Added lines and staged file paths, never the denylist itself.
+hits="$(
+  { git diff --cached --no-color --unified=0 | grep -E '^\+' | grep -vE '^\+\+\+ ' || true
+    git diff --cached --name-only || true
+  } | grep -inF -f "$patterns" || true
+)"
+if [[ -n "$hits" ]]; then
+  echo "pre-commit: staged changes contain strings from $denylist:" >&2
+  echo "$hits" >&2
+  exit 1
+fi

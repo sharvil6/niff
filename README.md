@@ -13,3 +13,11 @@ uv run pytest                    # tests
 uv run ruff check . && uv run ruff format --check .   # lint + format
 uv run pyright                   # type check
 ```
+
+This repo is public; see `CLAUDE.md` for what must never be committed. Enable the pre-commit
+hook once per clone (requires `brew install gitleaks`), then copy `.private-denylist.example` to
+`.private-denylist` and fill in your own household strings:
+
+```bash
+git config core.hooksPath .githooks
+```

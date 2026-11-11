@@ -1,0 +1,7 @@
+# Copy to .private-denylist (git-ignored) and replace these with real household strings.
+# One per line, matched case-insensitively against staged changes. Lines starting with # are ignored.
+Jane Example
+jane@example.com
+example-tailnet
+Example Mortgage Co
+Example 401k Portal

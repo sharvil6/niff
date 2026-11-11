@@ -15,3 +15,7 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Private household material: real exports, notes, design doc. Never committed.
+private/
+.private-denylist
