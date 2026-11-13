@@ -8,7 +8,7 @@ Requires [uv](https://docs.astral.sh/uv/). uv installs Python 3.13 and the proje
 
 ```bash
 uv sync                          # create .venv from uv.lock
-uv run uvicorn niff.main:app --reload   # dev server on http://127.0.0.1:8000
+uv run uvicorn niff.main:app --reload   # dev server on http://127.0.0.1:8000 (DB: $NIFF_DB_PATH, default data/niff.db)
 uv run pytest                    # tests
 uv run ruff check . && uv run ruff format --check .   # lint + format
 uv run pyright                   # type check

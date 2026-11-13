@@ -19,3 +19,6 @@ __pycache__/
 # Private household material: real exports, notes, design doc. Never committed.
 private/
 .private-denylist
+
+# Local database (real balances once YNAB sync runs)
+data/
