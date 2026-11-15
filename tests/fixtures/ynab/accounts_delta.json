@@ -1,0 +1,33 @@
+{
+  "data": {
+    "accounts": [
+      {
+        "id": "fake-checking",
+        "name": "Everyday Checking",
+        "type": "checking",
+        "on_budget": true,
+        "closed": false,
+        "note": null,
+        "balance": 1200060,
+        "cleared_balance": 1200060,
+        "uncleared_balance": 0,
+        "transfer_payee_id": "fake-payee-1",
+        "deleted": false
+      },
+      {
+        "id": "fake-card",
+        "name": "Rewards Card",
+        "type": "creditCard",
+        "on_budget": true,
+        "closed": false,
+        "note": null,
+        "balance": -45000,
+        "cleared_balance": -40000,
+        "uncleared_balance": -5000,
+        "transfer_payee_id": "fake-payee-2",
+        "deleted": true
+      }
+    ],
+    "server_knowledge": 105
+  }
+}

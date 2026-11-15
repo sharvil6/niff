@@ -1,3 +1,4 @@
+from contextlib import closing
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -15,4 +16,5 @@ def test_startup_migrates_and_healthz_reports_ok(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
-    assert schema_version(connect(db_path)) == len(load_migrations())
+    with closing(connect(db_path)) as conn:
+        assert schema_version(conn) == len(load_migrations())

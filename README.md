@@ -21,3 +21,17 @@ hook once per clone (requires `brew install gitleaks`), then copy `.private-deny
 ```bash
 git config core.hooksPath .githooks
 ```
+
+## Syncing YNAB locally
+
+Copy `.env.example` to `.env.local` (git-ignored) and put your YNAB personal access token in it.
+uv loads the file for each command:
+
+```bash
+uv run --env-file .env.local niff plans   # find your plan ID, put it in .env.local
+uv run --env-file .env.local niff sync    # one sync into data/niff.db
+uv run --env-file .env.local uvicorn niff.main:app --reload   # API plus hourly sync
+```
+
+`.env.local` holds a real secret in plain text: keep it out of the repo (it's git-ignored) and
+readable only by you (`chmod 600 .env.local`).

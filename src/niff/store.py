@@ -1,11 +1,13 @@
-"""Typed reads and writes for the tables in the database. No ORM: plain SQL."""
+"""Typed reads and writes for the tables in the database. No ORM: plain SQL.
+
+Write functions don't open transactions themselves: the caller wraps them in
+``niff.db.transaction()``, so several writes can commit or roll back together.
+"""
 
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
-from niff.db import transaction
 
 
 @dataclass(frozen=True)
@@ -32,8 +34,14 @@ def _to_text(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat()
 
 
+def _require_transaction(conn: sqlite3.Connection) -> None:
+    if not conn.in_transaction:
+        raise RuntimeError("store writes must run inside niff.db.transaction()")
+
+
 def upsert_accounts(conn: sqlite3.Connection, accounts: Iterable[Account], now: datetime) -> None:
     """Insert accounts, or update existing ones matched by YNAB account ID."""
+    _require_transaction(conn)
     updated_at = _to_text(now)
     rows = [
         (
@@ -48,23 +56,22 @@ def upsert_accounts(conn: sqlite3.Connection, accounts: Iterable[Account], now: 
         )
         for a in accounts
     ]
-    with transaction(conn):
-        conn.executemany(
-            """
-            INSERT INTO accounts
-                (ynab_account_id, name, type, on_budget, closed, deleted, balance, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (ynab_account_id) DO UPDATE SET
-                name = excluded.name,
-                type = excluded.type,
-                on_budget = excluded.on_budget,
-                closed = excluded.closed,
-                deleted = excluded.deleted,
-                balance = excluded.balance,
-                updated_at = excluded.updated_at
-            """,
-            rows,
-        )
+    conn.executemany(
+        """
+        INSERT INTO accounts
+            (ynab_account_id, name, type, on_budget, closed, deleted, balance, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (ynab_account_id) DO UPDATE SET
+            name = excluded.name,
+            type = excluded.type,
+            on_budget = excluded.on_budget,
+            closed = excluded.closed,
+            deleted = excluded.deleted,
+            balance = excluded.balance,
+            updated_at = excluded.updated_at
+        """,
+        rows,
+    )
 
 
 def list_accounts(conn: sqlite3.Connection) -> list[Account]:
@@ -109,14 +116,14 @@ def get_sync_state(conn: sqlite3.Connection, source: str) -> SyncState:
 def set_sync_state(
     conn: sqlite3.Connection, source: str, server_knowledge: int, synced_at: datetime
 ) -> None:
-    with transaction(conn):
-        conn.execute(
-            """
-            INSERT INTO sync_state (source, server_knowledge, last_synced_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT (source) DO UPDATE SET
-                server_knowledge = excluded.server_knowledge,
-                last_synced_at = excluded.last_synced_at
-            """,
-            (source, server_knowledge, _to_text(synced_at)),
-        )
+    _require_transaction(conn)
+    conn.execute(
+        """
+        INSERT INTO sync_state (source, server_knowledge, last_synced_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT (source) DO UPDATE SET
+            server_knowledge = excluded.server_knowledge,
+            last_synced_at = excluded.last_synced_at
+        """,
+        (source, server_knowledge, _to_text(synced_at)),
+    )

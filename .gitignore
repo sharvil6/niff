@@ -10,6 +10,7 @@ __pycache__/
 *.sqlite3
 .env
 .env.*
+!.env.example
 
 # OS / editors
 .DS_Store

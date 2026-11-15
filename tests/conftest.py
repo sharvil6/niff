@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from niff.db import connect, migrate
+from tests.fakes import FakeYnab
 
 
 @pytest.fixture
@@ -21,3 +22,8 @@ def conn(db_path: Path) -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture
+def fake_ynab() -> FakeYnab:
+    return FakeYnab()

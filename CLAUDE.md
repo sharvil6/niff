@@ -14,12 +14,12 @@ Never commit:
   brokerages, mortgage servicers or retirement portals.
 - Network details: tailnet name, hostnames, IP addresses, Tailscale ACLs naming real devices.
 - Personal details: names, email addresses, phone numbers.
-- Secrets of any kind. Secrets live in 1Password and are loaded at runtime.
+- Secrets of any kind. The YNAB token lives only in the git-ignored `.env.local`.
 
 Instead:
 
 - Tests use hand-written, obviously fake fixtures ("Coffee Shop", `-4500` milliunits).
-- Household-specific config comes from 1Password or a git-ignored local file; the repo ships only
+- Household-specific config comes from a git-ignored local file (`.env.local`); the repo ships only
   `*.example` files with fake values.
 - Real exports, notes and the full design doc live in `private/`, which is git-ignored.
 - Commits use the GitHub no-reply email.

@@ -1,0 +1,50 @@
+"""Developer commands. Output goes to your terminal only; never paste it into the repo.
+
+uv run niff plans   # list YNAB plans to find NIFF_YNAB_PLAN_ID
+uv run niff sync    # run one YNAB sync now
+"""
+
+import argparse
+import logging
+import sys
+
+from niff.config import Settings
+from niff.sync import run_sync
+from niff.ynab import YnabClient, YnabError
+
+
+def _plans(settings: Settings) -> int:
+    if not settings.ynab_token:
+        print("NIFF_YNAB_TOKEN is not set", file=sys.stderr)
+        return 1
+    with YnabClient(settings.ynab_token) as client:
+        for plan in client.list_plans():
+            print(f"{plan.id}  {plan.name}")
+    return 0
+
+
+def _sync(settings: Settings) -> int:
+    result = run_sync(settings)
+    kind = "full" if result.full else "delta"
+    print(f"YNAB sync ({kind}): {result.accounts_changed} accounts changed")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="niff")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("plans", help="list YNAB plans and their IDs")
+    commands.add_parser("sync", help="run one YNAB sync now")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    settings = Settings.from_env()
+    try:
+        return _plans(settings) if args.command == "plans" else _sync(settings)
+    except (YnabError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

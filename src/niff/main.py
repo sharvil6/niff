@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from niff.config import Settings
-from niff.db import connect, migrate
+from niff.db import connect, open_database
+from niff.scheduler import start_scheduler
 
 router = APIRouter()
 
@@ -39,13 +40,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        resolved.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = connect(resolved.db_path)
+        open_database(resolved.db_path).close()
+        scheduler = start_scheduler(resolved)
         try:
-            migrate(conn)
+            yield
         finally:
-            conn.close()
-        yield
+            if scheduler is not None:
+                scheduler.shutdown()
 
     app = FastAPI(title="Niff", lifespan=lifespan)
     app.state.settings = resolved

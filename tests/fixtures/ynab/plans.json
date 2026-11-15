@@ -1,0 +1,8 @@
+{
+  "data": {
+    "plans": [
+      {"id": "fake-plan-id", "name": "Example Household", "last_modified_on": "2026-01-15T12:00:00Z"}
+    ],
+    "default_plan": null
+  }
+}

@@ -27,6 +27,18 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def open_database(path: Path) -> sqlite3.Connection:
+    """Create the folder if needed, connect, and apply pending migrations."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(path)
+    try:
+        migrate(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Connection]:
     """Run a block in one write transaction: commit on success, roll back on error."""
