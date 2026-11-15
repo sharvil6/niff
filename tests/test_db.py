@@ -18,7 +18,8 @@ def test_migrate_fresh_database_creates_tables(db_path: Path) -> None:
 
         assert applied == len(load_migrations())
         assert schema_version(conn) == len(load_migrations())
-        assert {"accounts", "sync_state"} <= table_names(conn)
+        assert {"accounts", "ynab_plans"} <= table_names(conn)
+        assert "sync_state" not in table_names(conn)
 
 
 def test_migrate_twice_is_a_no_op(conn: sqlite3.Connection) -> None:
@@ -50,6 +51,25 @@ def test_connection_pragmas(conn: sqlite3.Connection) -> None:
 def test_strict_table_rejects_wrong_type(conn: sqlite3.Connection) -> None:
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO accounts (ynab_account_id, name, type, on_budget, balance, updated_at)"
-            " VALUES ('acc-1', 'Checking', 'checking', 1, 'not a number', '2026-01-01')"
+            "INSERT INTO accounts (plan_id, ynab_account_id, name, type, on_budget, balance,"
+            " updated_at) VALUES (1, 'acc-1', 'Checking', 'checking', 1, 'not a number',"
+            " '2026-01-01')"
         )
+
+
+def test_plans_migration_applies_on_top_of_existing_data(db_path: Path) -> None:
+    first, *rest = load_migrations()
+    with closing(connect(db_path)) as conn:
+        migrate(conn, [first])
+        conn.execute(
+            "INSERT INTO accounts (ynab_account_id, name, type, on_budget, balance, updated_at)"
+            " VALUES ('fake-checking', 'Everyday Checking', 'checking', 1, 100, '2026-01-01')"
+        )
+        conn.execute("INSERT INTO sync_state (source, server_knowledge) VALUES ('ynab', 100)")
+
+        migrate(conn, [first, *rest])
+
+        assert schema_version(conn) == len(load_migrations())
+        assert "sync_state" not in table_names(conn)
+        assert conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM ynab_plans").fetchone()[0] == 0

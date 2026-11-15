@@ -12,7 +12,7 @@ from urllib.parse import quote
 import httpx2
 from pydantic import BaseModel, ValidationError
 
-from niff.store import Account
+from niff.store import Account, Plan
 
 BASE_URL = "https://api.ynab.com/v1"
 
@@ -26,12 +26,6 @@ class YnabError(Exception):
 
 class YnabRateLimited(YnabError):
     """429: over YNAB's 200 requests per hour. Wait for the next scheduled run."""
-
-
-@dataclass(frozen=True)
-class Plan:
-    id: str
-    name: str
 
 
 @dataclass(frozen=True)
@@ -123,6 +117,7 @@ class YnabClient:
         return AccountsDelta(
             accounts=[
                 Account(
+                    plan_id=plan_id,
                     ynab_account_id=a.id,
                     name=a.name,
                     type=a.type,

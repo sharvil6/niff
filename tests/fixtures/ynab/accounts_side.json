@@ -1,0 +1,20 @@
+{
+  "data": {
+    "accounts": [
+      {
+        "id": "fake-side-savings",
+        "name": "Side Savings",
+        "type": "savings",
+        "on_budget": true,
+        "closed": false,
+        "note": null,
+        "balance": 500000,
+        "cleared_balance": 500000,
+        "uncleared_balance": 0,
+        "transfer_payee_id": "fake-payee-3",
+        "deleted": false
+      }
+    ],
+    "server_knowledge": 7
+  }
+}

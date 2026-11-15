@@ -1,7 +1,9 @@
 {
   "data": {
     "plans": [
-      {"id": "fake-plan-id", "name": "Example Household", "last_modified_on": "2026-01-15T12:00:00Z"}
+      {"id": "fake-plan-id", "name": "Example Household", "last_modified_on": "2026-01-15T12:00:00Z"},
+      {"id": "fake-side-plan-id", "name": "Example Side Plan", "last_modified_on": "2026-01-10T09:00:00Z"},
+      {"id": "fake-old-plan-id", "name": "Example Household (Fresh Start)", "last_modified_on": "2024-06-01T09:00:00Z"}
     ],
     "default_plan": null
   }

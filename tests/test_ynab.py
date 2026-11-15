@@ -1,7 +1,8 @@
 import httpx2
 import pytest
 
-from niff.ynab import Plan, YnabError, YnabRateLimited
+from niff.store import Plan
+from niff.ynab import YnabError, YnabRateLimited
 from tests.fakes import FAKE_TOKEN, FakeYnab
 
 
@@ -11,7 +12,10 @@ def test_list_plans_sends_token_and_parses(fake_ynab: FakeYnab) -> None:
     with fake_ynab.client() as client:
         plans = client.list_plans()
 
-    assert plans == [Plan(id="fake-plan-id", name="Example Household")]
+    assert plans[:2] == [
+        Plan(id="fake-plan-id", name="Example Household"),
+        Plan(id="fake-side-plan-id", name="Example Side Plan"),
+    ]
     request = fake_ynab.requests[0]
     assert request.url.path == "/v1/plans"
     assert request.headers["Authorization"] == f"Bearer {FAKE_TOKEN}"
@@ -25,6 +29,7 @@ def test_get_accounts_without_cursor_is_a_full_fetch(fake_ynab: FakeYnab) -> Non
 
     assert [a.name for a in delta.accounts] == ["Everyday Checking", "Rewards Card"]
     assert delta.accounts[1].balance == -45_000
+    assert {a.plan_id for a in delta.accounts} == {"fake-plan-id"}
     assert delta.server_knowledge == 100
     request = fake_ynab.requests[0]
     assert request.url.path == "/v1/plans/fake-plan-id/accounts"

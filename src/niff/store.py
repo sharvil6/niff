@@ -11,7 +11,24 @@ from datetime import UTC, datetime
 
 
 @dataclass(frozen=True)
+class Plan:
+    """A YNAB plan (formerly "budget")."""
+
+    id: str  # YNAB's plan ID
+    name: str
+
+
+@dataclass(frozen=True)
+class PlanCursor:
+    """Where a plan's last sync left off. ``server_knowledge`` is None before the first sync."""
+
+    server_knowledge: int | None
+    last_synced_at: datetime | None
+
+
+@dataclass(frozen=True)
 class Account:
+    plan_id: str  # YNAB's plan ID
     ynab_account_id: str
     name: str
     type: str
@@ -19,13 +36,6 @@ class Account:
     closed: bool
     deleted: bool
     balance: int  # milliunits
-
-
-@dataclass(frozen=True)
-class SyncState:
-    source: str
-    server_knowledge: int | None
-    last_synced_at: datetime | None
 
 
 def _to_text(moment: datetime) -> str:
@@ -39,12 +49,57 @@ def _require_transaction(conn: sqlite3.Connection) -> None:
         raise RuntimeError("store writes must run inside niff.db.transaction()")
 
 
+def upsert_plans(conn: sqlite3.Connection, plans: Iterable[Plan]) -> None:
+    """Insert plans, or update their names. Cursors are left untouched."""
+    _require_transaction(conn)
+    conn.executemany(
+        """
+        INSERT INTO ynab_plans (ynab_plan_id, name) VALUES (?, ?)
+        ON CONFLICT (ynab_plan_id) DO UPDATE SET name = excluded.name
+        """,
+        [(p.id, p.name) for p in plans],
+    )
+
+
+def get_plan_cursor(conn: sqlite3.Connection, plan_id: str) -> PlanCursor:
+    row: sqlite3.Row | None = conn.execute(
+        "SELECT server_knowledge, last_synced_at FROM ynab_plans WHERE ynab_plan_id = ?",
+        (plan_id,),
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown plan: {plan_id}")
+    synced_at: str | None = row["last_synced_at"]
+    return PlanCursor(
+        server_knowledge=row["server_knowledge"],
+        last_synced_at=datetime.fromisoformat(synced_at) if synced_at else None,
+    )
+
+
+def set_plan_cursor(
+    conn: sqlite3.Connection, plan_id: str, server_knowledge: int, synced_at: datetime
+) -> None:
+    _require_transaction(conn)
+    updated = conn.execute(
+        """
+        UPDATE ynab_plans SET server_knowledge = ?, last_synced_at = ?
+        WHERE ynab_plan_id = ?
+        """,
+        (server_knowledge, _to_text(synced_at), plan_id),
+    ).rowcount
+    if updated != 1:
+        raise KeyError(f"unknown plan: {plan_id}")
+
+
 def upsert_accounts(conn: sqlite3.Connection, accounts: Iterable[Account], now: datetime) -> None:
-    """Insert accounts, or update existing ones matched by YNAB account ID."""
+    """Insert accounts, or update existing ones matched by YNAB account ID.
+
+    Each account's plan must already exist (see ``upsert_plans``).
+    """
     _require_transaction(conn)
     updated_at = _to_text(now)
     rows = [
         (
+            a.plan_id,
             a.ynab_account_id,
             a.name,
             a.type,
@@ -59,9 +114,11 @@ def upsert_accounts(conn: sqlite3.Connection, accounts: Iterable[Account], now: 
     conn.executemany(
         """
         INSERT INTO accounts
-            (ynab_account_id, name, type, on_budget, closed, deleted, balance, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (plan_id, ynab_account_id, name, type, on_budget, closed, deleted, balance,
+             updated_at)
+        VALUES ((SELECT id FROM ynab_plans WHERE ynab_plan_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (ynab_account_id) DO UPDATE SET
+            plan_id = excluded.plan_id,
             name = excluded.name,
             type = excluded.type,
             on_budget = excluded.on_budget,
@@ -75,17 +132,20 @@ def upsert_accounts(conn: sqlite3.Connection, accounts: Iterable[Account], now: 
 
 
 def list_accounts(conn: sqlite3.Connection) -> list[Account]:
-    """Open, non-deleted accounts, ordered by name."""
+    """Open, non-deleted accounts, ordered by plan name then account name."""
     rows: list[sqlite3.Row] = conn.execute(
         """
-        SELECT ynab_account_id, name, type, on_budget, closed, deleted, balance
-        FROM accounts
-        WHERE closed = 0 AND deleted = 0
-        ORDER BY name
+        SELECT p.ynab_plan_id, a.ynab_account_id, a.name, a.type, a.on_budget, a.closed,
+               a.deleted, a.balance
+        FROM accounts AS a
+        JOIN ynab_plans AS p ON p.id = a.plan_id
+        WHERE a.closed = 0 AND a.deleted = 0
+        ORDER BY p.name, a.name
         """
     ).fetchall()
     return [
         Account(
+            plan_id=row["ynab_plan_id"],
             ynab_account_id=row["ynab_account_id"],
             name=row["name"],
             type=row["type"],
@@ -96,34 +156,3 @@ def list_accounts(conn: sqlite3.Connection) -> list[Account]:
         )
         for row in rows
     ]
-
-
-def get_sync_state(conn: sqlite3.Connection, source: str) -> SyncState:
-    """The stored cursor for a source, or an empty state if it has never synced."""
-    row: sqlite3.Row | None = conn.execute(
-        "SELECT server_knowledge, last_synced_at FROM sync_state WHERE source = ?", (source,)
-    ).fetchone()
-    if row is None:
-        return SyncState(source=source, server_knowledge=None, last_synced_at=None)
-    synced_at: str | None = row["last_synced_at"]
-    return SyncState(
-        source=source,
-        server_knowledge=row["server_knowledge"],
-        last_synced_at=datetime.fromisoformat(synced_at) if synced_at else None,
-    )
-
-
-def set_sync_state(
-    conn: sqlite3.Connection, source: str, server_knowledge: int, synced_at: datetime
-) -> None:
-    _require_transaction(conn)
-    conn.execute(
-        """
-        INSERT INTO sync_state (source, server_knowledge, last_synced_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT (source) DO UPDATE SET
-            server_knowledge = excluded.server_knowledge,
-            last_synced_at = excluded.last_synced_at
-        """,
-        (source, server_knowledge, _to_text(synced_at)),
-    )

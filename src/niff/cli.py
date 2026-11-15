@@ -1,6 +1,6 @@
 """Developer commands. Output goes to your terminal only; never paste it into the repo.
 
-uv run niff plans   # list YNAB plans to find NIFF_YNAB_PLAN_ID
+uv run niff plans   # list YNAB plans to find IDs for NIFF_YNAB_PLAN_IDS
 uv run niff sync    # run one YNAB sync now
 """
 
@@ -24,10 +24,14 @@ def _plans(settings: Settings) -> int:
 
 
 def _sync(settings: Settings) -> int:
-    result = run_sync(settings)
-    kind = "full" if result.full else "delta"
-    print(f"YNAB sync ({kind}): {result.accounts_changed} accounts changed")
-    return 0
+    results = run_sync(settings)
+    for result in results:
+        if result.error:
+            print(f"{result.plan_name}: failed ({result.error})")
+        else:
+            kind = "full" if result.full else "delta"
+            print(f"{result.plan_name}: {kind}, {result.accounts_changed} accounts changed")
+    return 1 if any(result.error for result in results) else 0
 
 
 def main(argv: list[str] | None = None) -> int:

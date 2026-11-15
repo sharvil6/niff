@@ -28,7 +28,7 @@ Copy `.env.example` to `.env.local` (git-ignored) and put your YNAB personal acc
 uv loads the file for each command:
 
 ```bash
-uv run --env-file .env.local niff plans   # find your plan ID, put it in .env.local
+uv run --env-file .env.local niff plans   # find plan IDs, list them in NIFF_YNAB_PLAN_IDS
 uv run --env-file .env.local niff sync    # one sync into data/niff.db
 uv run --env-file .env.local uvicorn niff.main:app --reload   # API plus hourly sync
 ```
