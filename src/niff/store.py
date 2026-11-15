@@ -44,6 +44,10 @@ def _to_text(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat()
 
 
+def _from_text(text: str | None) -> datetime | None:
+    return datetime.fromisoformat(text) if text else None
+
+
 def _require_transaction(conn: sqlite3.Connection) -> None:
     if not conn.in_transaction:
         raise RuntimeError("store writes must run inside niff.db.transaction()")
@@ -61,6 +65,28 @@ def upsert_plans(conn: sqlite3.Connection, plans: Iterable[Plan]) -> None:
     )
 
 
+@dataclass(frozen=True)
+class StoredPlan:
+    id: str  # YNAB's plan ID
+    name: str
+    last_synced_at: datetime | None
+
+
+def list_plans(conn: sqlite3.Connection) -> list[StoredPlan]:
+    """Every plan that has been synced, in no particular order."""
+    rows: list[sqlite3.Row] = conn.execute(
+        "SELECT ynab_plan_id, name, last_synced_at FROM ynab_plans"
+    ).fetchall()
+    return [
+        StoredPlan(
+            id=row["ynab_plan_id"],
+            name=row["name"],
+            last_synced_at=_from_text(row["last_synced_at"]),
+        )
+        for row in rows
+    ]
+
+
 def get_plan_cursor(conn: sqlite3.Connection, plan_id: str) -> PlanCursor:
     row: sqlite3.Row | None = conn.execute(
         "SELECT server_knowledge, last_synced_at FROM ynab_plans WHERE ynab_plan_id = ?",
@@ -68,10 +94,9 @@ def get_plan_cursor(conn: sqlite3.Connection, plan_id: str) -> PlanCursor:
     ).fetchone()
     if row is None:
         raise KeyError(f"unknown plan: {plan_id}")
-    synced_at: str | None = row["last_synced_at"]
     return PlanCursor(
         server_knowledge=row["server_knowledge"],
-        last_synced_at=datetime.fromisoformat(synced_at) if synced_at else None,
+        last_synced_at=_from_text(row["last_synced_at"]),
     )
 
 
