@@ -72,6 +72,12 @@ jobs:
       - name: Build image
         run: docker build -t niff:ci .
 
+      # Check the merged tailnet Compose file; the env files are git-ignored, so stub them.
+      - name: Validate Compose files
+        run: |
+          touch .env.local .env.tailscale
+          docker compose -f compose.yaml -f compose.tailscale.yaml config -q
+
   secrets:
     runs-on: ubuntu-latest
     steps:

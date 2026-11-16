@@ -66,3 +66,29 @@ docker compose down              # stop; the niff-data volume keeps the database
 The volume starts empty; the first sync fills it from YNAB. `.dockerignore` is an allowlist, so
 `.env.local`, `data/` and `private/` never reach the image. Set `NIFF_LOG_LEVEL` (default `INFO`)
 to change how much Niff logs.
+
+## Running on your tailnet
+
+`compose.tailscale.yaml` adds a Tailscale sidecar so Niff is reachable over HTTPS from your
+devices on your tailnet and nowhere else. Niff shares the sidecar's network stack and has no host
+port; Tailscale Serve (`tailscale/serve.json`) terminates HTTPS on 443 and proxies to Niff on the
+shared localhost. Niff has no login yet, so your tailnet policy is the only access control.
+
+One-time setup in the Tailscale admin console:
+
+1. DNS: turn on MagicDNS and HTTPS certificates. Certificates are published in public
+   Certificate Transparency logs, so pick a tailnet DNS name that doesn't identify you.
+2. Access controls: add `tag:niff` to `tagOwners`, and a rule that lets only your household's
+   users reach `tag:niff` on port 443.
+3. Keys: generate a reusable, pre-approved auth key with the tag `tag:niff`.
+
+Copy `.env.tailscale.example` to `.env.tailscale` (git-ignored, `chmod 600`), put the key in it,
+then:
+
+```bash
+docker compose -f compose.yaml -f compose.tailscale.yaml up --build
+```
+
+Open `https://niff.<your-tailnet>.ts.net`; the first request may take a few seconds while the
+certificate is issued. The `tailscale-state` volume keeps the node's identity, so the key is used
+only on first start. The YNAB token stays in `.env.local` and only the Niff container sees it.

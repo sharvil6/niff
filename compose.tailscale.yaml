@@ -1,0 +1,32 @@
+# Run Niff on your tailnet, reachable only through Tailscale:
+#   docker compose -f compose.yaml -f compose.tailscale.yaml up --build
+# Then open https://<TS_HOSTNAME>.<your-tailnet>.ts.net from any device on the tailnet.
+# Reads the Tailscale auth key from .env.tailscale (git-ignored); see README.
+
+services:
+  tailscale:
+    image: tailscale/tailscale:v1.104.7
+    hostname: niff # tailnet name, unless TS_HOSTNAME is set in .env.tailscale
+    env_file: .env.tailscale
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale # node identity survives restarts and rebuilds
+      TS_AUTH_ONCE: "true" # use the auth key only on first start, not every start
+      TS_USERSPACE: "true" # no /dev/net/tun, no NET_ADMIN
+      TS_SERVE_CONFIG: /config/serve.json # HTTPS :443 -> Niff on the shared localhost
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    restart: unless-stopped
+
+  niff:
+    # Share the tailscale container's network stack: Tailscale reaches Niff on 127.0.0.1:8000.
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    # No host port: Tailscale is the only way in.
+    ports: !reset []
+    # Listen on the shared localhost only, not the shared stack's bridge interface.
+    command: ["uvicorn", "niff.main:app", "--host", "127.0.0.1", "--port", "8000"]
+
+volumes:
+  tailscale-state:
