@@ -17,6 +17,7 @@ class Settings:
     ynab_plan_ids: tuple[str, ...] = ()
     sync_interval_minutes: int = 60
     web_dist: Path = DEFAULT_WEB_DIST
+    log_level: str = "INFO"
 
     @property
     def ynab_configured(self) -> bool:
@@ -30,4 +31,5 @@ class Settings:
             ynab_token=os.environ.get("NIFF_YNAB_TOKEN") or None,
             ynab_plan_ids=tuple(p.strip() for p in plan_ids.split(",") if p.strip()),
             web_dist=Path(os.environ.get("NIFF_WEB_DIST", DEFAULT_WEB_DIST)),
+            log_level=os.environ.get("NIFF_LOG_LEVEL") or "INFO",
         )

@@ -5,10 +5,10 @@ uv run niff sync    # run one YNAB sync now
 """
 
 import argparse
-import logging
 import sys
 
 from niff.config import Settings
+from niff.log import configure_logging
 from niff.sync import run_sync
 from niff.ynab import YnabClient, YnabError
 
@@ -41,8 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("sync", help="run one YNAB sync now")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     settings = Settings.from_env()
+    configure_logging(settings.log_level)
     try:
         return _plans(settings) if args.command == "plans" else _sync(settings)
     except (YnabError, RuntimeError) as exc:

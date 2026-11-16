@@ -51,3 +51,18 @@ uv run --env-file .env.local uvicorn niff.main:app --reload   # API, page, hourl
 
 `.env.local` holds a real secret in plain text: keep it out of the repo (it's git-ignored) and
 readable only by you (`chmod 600 .env.local`).
+
+## Running in a container
+
+The `Dockerfile` builds the page with Node, installs Niff with uv and runs it with uvicorn as a
+non-root user. `compose.yaml` runs it locally (Docker Desktop or OrbStack), reading the token and
+plan IDs from `.env.local` and keeping the database in the `niff-data` volume:
+
+```bash
+docker compose up --build        # http://127.0.0.1:8000, sync logs in the output
+docker compose down              # stop; the niff-data volume keeps the database
+```
+
+The volume starts empty; the first sync fills it from YNAB. `.dockerignore` is an allowlist, so
+`.env.local`, `data/` and `private/` never reach the image. Set `NIFF_LOG_LEVEL` (default `INFO`)
+to change how much Niff logs.

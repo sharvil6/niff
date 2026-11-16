@@ -1,0 +1,19 @@
+# Run Niff locally in a container:
+#   docker compose up --build
+# Then open http://127.0.0.1:8000. Reads the YNAB token and plan IDs from .env.local.
+
+services:
+  niff:
+    build: .
+    env_file: .env.local
+    environment:
+      # Overrides the local-dev path in .env.local; the database lives on the volume.
+      NIFF_DB_PATH: /data/niff.db
+    ports:
+      - "127.0.0.1:8000:8000" # this machine only
+    volumes:
+      - niff-data:/data
+    restart: unless-stopped
+
+volumes:
+  niff-data:

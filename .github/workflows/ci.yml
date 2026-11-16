@@ -63,6 +63,15 @@ jobs:
       - name: Build
         run: npm run build
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Build only, no push: catches a broken Dockerfile on the PR. Publishing comes with deploy.
+      - name: Build image
+        run: docker build -t niff:ci .
+
   secrets:
     runs-on: ubuntu-latest
     steps:

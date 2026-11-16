@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from niff.config import Settings
 from niff.db import connect, open_database
+from niff.log import configure_logging
 from niff.scheduler import start_scheduler
 from niff.snapshot import build_snapshot
 
@@ -91,6 +92,7 @@ def healthz(conn: Conn) -> JSONResponse:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or Settings.from_env()
+    configure_logging(resolved.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:

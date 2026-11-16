@@ -1,0 +1,15 @@
+# Allowlist: only what the image build needs goes into the build context. Everything else,
+# including .env.local (the YNAB token), data/ (real balances) and private/, stays out of every
+# image layer.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!.python-version
+!src/
+!web/
+
+# Local build output inside the allowed folders.
+**/__pycache__
+web/node_modules
+web/dist
