@@ -123,7 +123,7 @@ def test_snapshot_endpoint_returns_integer_milliunits(tmp_path: Path) -> None:
     settings = Settings(db_path=db_path, ynab_plan_ids=(HOUSEHOLD.id, SIDE.id))
 
     with TestClient(create_app(settings)) as client:
-        body = client.get("/snapshot").json()
+        body = client.get("/api/snapshot").json()
 
     assert body["net_worth"] == 3_689_560
     assert body["plans"][0] == {

@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from niff.config import Settings
@@ -13,7 +14,10 @@ from niff.db import connect, open_database
 from niff.scheduler import start_scheduler
 from niff.snapshot import build_snapshot
 
-router = APIRouter()
+# App data lives under /api so it never collides with the web page's own addresses.
+api = APIRouter(prefix="/api")
+# Infrastructure endpoints stay at the root.
+infra = APIRouter()
 
 
 def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
@@ -51,7 +55,7 @@ class SnapshotOut(BaseModel):
     accounts: list[AccountOut]
 
 
-@router.get("/snapshot")
+@api.get("/snapshot")
 def snapshot(conn: Conn, request: Request) -> SnapshotOut:
     """Net worth, per-plan totals and open accounts, all in milliunits."""
     settings: Settings = request.app.state.settings
@@ -76,7 +80,7 @@ def snapshot(conn: Conn, request: Request) -> SnapshotOut:
     )
 
 
-@router.get("/healthz")
+@infra.get("/healthz")
 def healthz(conn: Conn) -> JSONResponse:
     try:
         conn.execute("SELECT 1").fetchone()
@@ -100,7 +104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Niff", lifespan=lifespan)
     app.state.settings = resolved
-    app.include_router(router)
+    app.include_router(api)
+    app.include_router(infra)
+    # Mounted last so API routes win. Skipped when the page hasn't been built.
+    if resolved.web_dist.is_dir():
+        app.mount("/", StaticFiles(directory=resolved.web_dist, html=True), name="web")
     return app
 
 
