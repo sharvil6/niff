@@ -7,9 +7,9 @@ and loans as negative balances, so a plain sum is correct. Amounts are milliunit
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
-from niff.store import Account, list_accounts, list_plans
+from niff.store import Account, list_accounts, list_plan_day_totals, list_plans
 
 
 @dataclass(frozen=True)
@@ -55,3 +55,31 @@ def build_snapshot(conn: sqlite3.Connection, plan_ids: Sequence[str]) -> Snapsho
         ],
         accounts=accounts,
     )
+
+
+@dataclass(frozen=True)
+class DailyNetWorth:
+    day: date
+    net_worth: int  # milliunits
+
+
+def net_worth_history(conn: sqlite3.Connection, plan_ids: Sequence[str]) -> list[DailyNetWorth]:
+    """Net worth for every day with recorded balances, oldest first. Only configured plans count.
+
+    A plan with no balances on a day (its sync failed, or Niff wasn't running) counts with its
+    last recorded total, so a missed sync doesn't show as a dip. A plan counts only from its first
+    recorded day.
+    """
+    configured = set(plan_ids)
+    latest: dict[str, int] = {}  # plan ID -> its most recent total so far
+    history: list[DailyNetWorth] = []
+    for row in list_plan_day_totals(conn):  # ordered by day
+        if row.plan_id not in configured:
+            continue
+        latest[row.plan_id] = row.total
+        point = DailyNetWorth(day=row.day, net_worth=sum(latest.values()))
+        if history and history[-1].day == row.day:
+            history[-1] = point
+        else:
+            history.append(point)
+    return history

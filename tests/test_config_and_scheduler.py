@@ -30,6 +30,26 @@ def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.ynab_configured
 
 
+def test_settings_timezone_defaults_to_utc(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NIFF_TIMEZONE", raising=False)
+
+    assert Settings.from_env().timezone.key == "UTC"
+
+
+def test_settings_read_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NIFF_TIMEZONE", "Asia/Tokyo")
+
+    assert Settings.from_env().timezone.key == "Asia/Tokyo"
+
+
+@pytest.mark.parametrize("name", ["Not/AZone", "../etc/passwd"])
+def test_settings_reject_unknown_timezone(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NIFF_TIMEZONE", name)
+
+    with pytest.raises(ValueError, match="NIFF_TIMEZONE"):
+        Settings.from_env()
+
+
 def test_settings_need_plan_ids_to_be_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NIFF_YNAB_TOKEN", FAKE_TOKEN)
     monkeypatch.delenv("NIFF_YNAB_PLAN_IDS", raising=False)

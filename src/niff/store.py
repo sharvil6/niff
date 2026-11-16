@@ -7,7 +7,7 @@ Write functions don't open transactions themselves: the caller wraps them in
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 
 @dataclass(frozen=True)
@@ -178,6 +178,66 @@ def list_accounts(conn: sqlite3.Connection) -> list[Account]:
             closed=bool(row["closed"]),
             deleted=bool(row["deleted"]),
             balance=row["balance"],
+        )
+        for row in rows
+    ]
+
+
+def record_balances(conn: sqlite3.Connection, plan_id: str, day: date, now: datetime) -> int:
+    """Save each open account's current balance as the plan's balance for ``day``.
+
+    Run after ``upsert_accounts``. Rows already saved for ``day`` are overwritten, so a day keeps
+    the last balance seen. An account closed or deleted since loses its row for ``day``, so the
+    day's history matches the current accounts. Returns how many balances were saved.
+    """
+    _require_transaction(conn)
+    conn.execute(
+        """
+        DELETE FROM balance_history
+        WHERE date = ? AND account_id IN (
+            SELECT a.id FROM accounts AS a JOIN ynab_plans AS p ON p.id = a.plan_id
+            WHERE p.ynab_plan_id = ? AND (a.closed = 1 OR a.deleted = 1)
+        )
+        """,
+        (day.isoformat(), plan_id),
+    )
+    return conn.execute(
+        """
+        INSERT INTO balance_history (account_id, date, balance, source, recorded_at)
+        SELECT a.id, ?, a.balance, a.source, ?
+        FROM accounts AS a JOIN ynab_plans AS p ON p.id = a.plan_id
+        WHERE p.ynab_plan_id = ? AND a.closed = 0 AND a.deleted = 0
+        ON CONFLICT (account_id, date) DO UPDATE SET
+            balance = excluded.balance,
+            source = excluded.source,
+            recorded_at = excluded.recorded_at
+        """,
+        (day.isoformat(), _to_text(now), plan_id),
+    ).rowcount
+
+
+@dataclass(frozen=True)
+class PlanDayTotal:
+    plan_id: str  # YNAB's plan ID
+    day: date
+    total: int  # milliunits: sum of the plan's recorded balances that day
+
+
+def list_plan_day_totals(conn: sqlite3.Connection) -> list[PlanDayTotal]:
+    """Each plan's total for every day it has recorded balances, ordered by day."""
+    rows: list[sqlite3.Row] = conn.execute(
+        """
+        SELECT p.ynab_plan_id, h.date, SUM(h.balance) AS total
+        FROM balance_history AS h
+        JOIN accounts AS a ON a.id = h.account_id
+        JOIN ynab_plans AS p ON p.id = a.plan_id
+        GROUP BY p.ynab_plan_id, h.date
+        ORDER BY h.date, p.ynab_plan_id
+        """
+    ).fetchall()
+    return [
+        PlanDayTotal(
+            plan_id=row["ynab_plan_id"], day=date.fromisoformat(row["date"]), total=row["total"]
         )
         for row in rows
     ]

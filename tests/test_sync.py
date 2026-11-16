@@ -1,5 +1,6 @@
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -13,6 +14,17 @@ HOUSEHOLD = "fake-plan-id"
 SIDE = "fake-side-plan-id"
 
 
+def balance_rows(conn: sqlite3.Connection) -> list[tuple[str, str, int]]:
+    rows = conn.execute(
+        """
+        SELECT a.ynab_account_id, h.date, h.balance
+        FROM balance_history AS h JOIN accounts AS a ON a.id = h.account_id
+        ORDER BY h.date, a.ynab_account_id
+        """
+    ).fetchall()
+    return [(row[0], row[1], row[2]) for row in rows]
+
+
 def test_first_sync_stores_accounts_and_cursor(
     conn: sqlite3.Connection, fake_ynab: FakeYnab
 ) -> None:
@@ -22,7 +34,9 @@ def test_first_sync_stores_accounts_and_cursor(
     with fake_ynab.client() as client:
         results = sync_plans(conn, client, [HOUSEHOLD], NOW)
 
-    assert results == [PlanSyncResult("Example Household", full=True, accounts_changed=2)]
+    assert results == [
+        PlanSyncResult("Example Household", full=True, accounts_changed=2, balances_recorded=2)
+    ]
     assert [a.name for a in list_accounts(conn)] == ["Everyday Checking", "Rewards Card"]
     cursor = get_plan_cursor(conn, HOUSEHOLD)
     assert (cursor.server_knowledge, cursor.last_synced_at) == (100, NOW)
@@ -95,7 +109,9 @@ def test_one_failing_plan_does_not_block_the_other(
 
     assert results[0].plan_name == "Example Household"
     assert results[0].error == "YNAB request failed: 401 unauthorized"
-    assert results[1] == PlanSyncResult("Example Side Plan", full=True, accounts_changed=1)
+    assert results[1] == PlanSyncResult(
+        "Example Side Plan", full=True, accounts_changed=1, balances_recorded=1
+    )
     assert get_plan_cursor(conn, HOUSEHOLD).server_knowledge is None
     assert [a.name for a in list_accounts(conn)] == ["Side Savings"]
 
@@ -127,4 +143,52 @@ def test_failure_while_saving_rolls_back_accounts_and_cursor(
 
     assert results[0].error == "disk I/O error"
     assert list_accounts(conn) == []
+    assert balance_rows(conn) == []
     assert get_plan_cursor(conn, HOUSEHOLD).server_knowledge is None
+
+
+def test_each_sync_records_todays_balances(conn: sqlite3.Connection, fake_ynab: FakeYnab) -> None:
+    for fixture in ["plans.json", "accounts_full.json", "plans.json", "accounts_delta.json"]:
+        fake_ynab.respond(200, fixture)
+
+    with fake_ynab.client() as client:
+        sync_plans(conn, client, [HOUSEHOLD], NOW)
+        first_day = balance_rows(conn)
+        # Next day: checking's balance changed and the card was deleted.
+        results = sync_plans(conn, client, [HOUSEHOLD], datetime(2026, 1, 16, 12, 0, tzinfo=UTC))
+
+    assert first_day == [
+        ("fake-card", "2026-01-15", -45_000),
+        ("fake-checking", "2026-01-15", 1_234_560),
+    ]
+    assert results[0].balances_recorded == 1
+    assert balance_rows(conn) == [*first_day, ("fake-checking", "2026-01-16", 1_200_060)]
+
+
+def test_quiet_delta_still_records_unchanged_accounts(
+    conn: sqlite3.Connection, fake_ynab: FakeYnab
+) -> None:
+    fake_ynab.respond(200, "plans.json")
+    fake_ynab.respond(200, "accounts_full.json")
+    fake_ynab.respond(200, "plans.json")
+    fake_ynab.respond_raw(200, b'{"data": {"accounts": [], "server_knowledge": 100}}')
+
+    with fake_ynab.client() as client:
+        sync_plans(conn, client, [HOUSEHOLD], NOW)
+        results = sync_plans(conn, client, [HOUSEHOLD], datetime(2026, 1, 16, 12, 0, tzinfo=UTC))
+
+    assert (results[0].accounts_changed, results[0].balances_recorded) == (0, 2)
+    assert [day for _, day, _ in balance_rows(conn)] == ["2026-01-15"] * 2 + ["2026-01-16"] * 2
+
+
+def test_balances_are_recorded_under_the_local_date(
+    conn: sqlite3.Connection, fake_ynab: FakeYnab
+) -> None:
+    fake_ynab.respond(200, "plans.json")
+    fake_ynab.respond(200, "accounts_full.json")
+    late_evening_utc = datetime(2026, 1, 15, 20, 0, tzinfo=UTC)  # already the 16th in Tokyo
+
+    with fake_ynab.client() as client:
+        sync_plans(conn, client, [HOUSEHOLD], late_evening_utc, ZoneInfo("Asia/Tokyo"))
+
+    assert {day for _, day, _ in balance_rows(conn)} == {date(2026, 1, 16).isoformat()}

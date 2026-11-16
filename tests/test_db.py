@@ -73,3 +73,24 @@ def test_plans_migration_applies_on_top_of_existing_data(db_path: Path) -> None:
         assert "sync_state" not in table_names(conn)
         assert conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM ynab_plans").fetchone()[0] == 0
+
+
+def test_balance_history_migration_keeps_existing_accounts_and_cursor(db_path: Path) -> None:
+    migrations = load_migrations()
+    with closing(connect(db_path)) as conn:
+        migrate(conn, migrations[:2])
+        conn.execute(
+            "INSERT INTO ynab_plans (ynab_plan_id, name, server_knowledge)"
+            " VALUES ('fake-plan-id', 'Example Household', 100)"
+        )
+        conn.execute(
+            "INSERT INTO accounts (plan_id, ynab_account_id, name, type, on_budget, balance,"
+            " updated_at) VALUES (1, 'fake-checking', 'Everyday Checking', 'checking', 1, 100,"
+            " '2026-01-01')"
+        )
+
+        migrate(conn, migrations)
+
+        assert "balance_history" in table_names(conn)
+        assert conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 1
+        assert conn.execute("SELECT server_knowledge FROM ynab_plans").fetchone()[0] == 100

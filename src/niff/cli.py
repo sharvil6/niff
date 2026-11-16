@@ -30,7 +30,10 @@ def _sync(settings: Settings) -> int:
             print(f"{result.plan_name}: failed ({result.error})")
         else:
             kind = "full" if result.full else "delta"
-            print(f"{result.plan_name}: {kind}, {result.accounts_changed} accounts changed")
+            print(
+                f"{result.plan_name}: {kind}, {result.accounts_changed} accounts changed, "
+                f"{result.balances_recorded} balances recorded"
+            )
     return 1 if any(result.error for result in results) else 0
 
 

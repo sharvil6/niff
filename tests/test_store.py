@@ -1,6 +1,6 @@
 import sqlite3
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -8,8 +8,11 @@ from niff.db import transaction
 from niff.store import (
     Account,
     Plan,
+    PlanDayTotal,
     get_plan_cursor,
     list_accounts,
+    list_plan_day_totals,
+    record_balances,
     set_plan_cursor,
     upsert_accounts,
     upsert_plans,
@@ -127,3 +130,50 @@ def test_naive_timestamps_are_rejected(conn: sqlite3.Connection) -> None:
 def test_writes_outside_a_transaction_are_rejected(conn: sqlite3.Connection) -> None:
     with pytest.raises(RuntimeError, match="transaction"):
         upsert_accounts(conn, [CHECKING], NOW)
+
+
+DAY = date(2026, 1, 15)
+
+
+def test_record_balances_saves_open_accounts_of_that_plan(conn: sqlite3.Connection) -> None:
+    closed = replace(CHECKING, ynab_account_id="fake-old", name="Old Savings", closed=True)
+    with transaction(conn):
+        upsert_accounts(conn, [CHECKING, CARD, closed, SIDE_SAVINGS], NOW)
+        recorded = record_balances(conn, HOUSEHOLD.id, DAY, NOW)
+
+    assert recorded == 2
+    assert list_plan_day_totals(conn) == [PlanDayTotal(HOUSEHOLD.id, DAY, 1_234_560 - 45_000)]
+
+
+def test_record_balances_overwrites_the_same_day(conn: sqlite3.Connection) -> None:
+    with transaction(conn):
+        upsert_accounts(conn, [CHECKING], NOW)
+        record_balances(conn, HOUSEHOLD.id, DAY, NOW)
+    with transaction(conn):
+        upsert_accounts(conn, [replace(CHECKING, balance=999_000)], NOW)
+        record_balances(conn, HOUSEHOLD.id, DAY, NOW)
+
+    assert list_plan_day_totals(conn) == [PlanDayTotal(HOUSEHOLD.id, DAY, 999_000)]
+    assert conn.execute("SELECT COUNT(*) FROM balance_history").fetchone()[0] == 1
+
+
+def test_account_closed_later_that_day_loses_its_row(conn: sqlite3.Connection) -> None:
+    with transaction(conn):
+        upsert_accounts(conn, [CHECKING, CARD], NOW)
+        record_balances(conn, HOUSEHOLD.id, DAY, NOW)
+    with transaction(conn):
+        upsert_accounts(conn, [replace(CARD, closed=True)], NOW)
+        record_balances(conn, HOUSEHOLD.id, DAY, NOW)
+    next_day = date(2026, 1, 16)
+    with transaction(conn):
+        record_balances(conn, HOUSEHOLD.id, next_day, NOW)
+
+    assert list_plan_day_totals(conn) == [
+        PlanDayTotal(HOUSEHOLD.id, DAY, 1_234_560),
+        PlanDayTotal(HOUSEHOLD.id, next_day, 1_234_560),
+    ]
+
+
+def test_record_balances_outside_a_transaction_is_rejected(conn: sqlite3.Connection) -> None:
+    with pytest.raises(RuntimeError, match="transaction"):
+        record_balances(conn, HOUSEHOLD.id, DAY, NOW)

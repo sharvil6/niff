@@ -49,6 +49,10 @@ uv run --env-file .env.local niff sync    # one sync into data/niff.db
 uv run --env-file .env.local uvicorn niff.main:app --reload   # API, page, hourly sync
 ```
 
+Each sync also saves today's balance for every open account, which builds the net worth history.
+Set `NIFF_TIMEZONE` (for example `Europe/London`; default `UTC`) so each balance is saved under your
+local date.
+
 `.env.local` holds a real secret in plain text: keep it out of the repo (it's git-ignored) and
 readable only by you (`chmod 600 .env.local`).
 

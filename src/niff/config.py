@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_DB_PATH = Path("data/niff.db")
 # Built web page (`npm run build` in web/). Served at / when it exists; the API works without it.
@@ -18,6 +19,8 @@ class Settings:
     sync_interval_minutes: int = 60
     web_dist: Path = DEFAULT_WEB_DIST
     log_level: str = "INFO"
+    # Decides which day a balance is recorded under in the balance history.
+    timezone: ZoneInfo = field(default_factory=lambda: ZoneInfo("UTC"))
 
     @property
     def ynab_configured(self) -> bool:
@@ -32,4 +35,14 @@ class Settings:
             ynab_plan_ids=tuple(p.strip() for p in plan_ids.split(",") if p.strip()),
             web_dist=Path(os.environ.get("NIFF_WEB_DIST", DEFAULT_WEB_DIST)),
             log_level=os.environ.get("NIFF_LOG_LEVEL") or "INFO",
+            timezone=_timezone(os.environ.get("NIFF_TIMEZONE") or "UTC"),
         )
+
+
+def _timezone(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(
+            f"NIFF_TIMEZONE={name!r} is not a known timezone (use a name like Europe/London)"
+        ) from None
